@@ -1,82 +1,66 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import describe as desc
+import math
 
-def quartile(data, feature):
-	sorted_data = data.sort_values(by=feature)
-	length = len(sorted_data[feature].dropna())
-	if length == 0:
+def log_std(data, Feature):
+	std_deviation = desc.std(data, Feature)
+	if std_deviation <= 0:
 		return float('nan')
-	return sorted_data[feature].dropna().iloc[int(length * 0.25)], sorted_data[feature].dropna().iloc[int(length * 0.75)]
-
-def mediane(data, feature):
-	sorted_data = data.sort_values(by=feature)
-	length = len(sorted_data[feature].dropna())
-	if length == 0:
-		return float('nan')
-	return sorted_data[feature].dropna().iloc[int(length * 0.50)]
+	return math.log(std_deviation)
 
 def main():
-	data = pd.read_csv('datasets/dataset_test.csv')
+	data = pd.read_csv('datasets/dataset_train.csv')
 
-	Feature_1 = 'Arithmancy'
-	Feature_2 = 'Astronomy'
-	Feature_3 = 'Herbology'
-	Feature_4 = 'Defense Against the Dark Arts'
+	numeric_columns = data.select_dtypes(include=[float, int]).columns[1:]
+	log_std_devs = {col: log_std(data, col) for col in numeric_columns}
 
-	fig, ax = plt.subplots(figsize=(10, 8))
-	colors = ['skyblue', 'orange', 'green', 'red']
-	bar_width = 0.2  # Width of the bars
-	positions = list(range(len(['Below Q1', 'Q1-Median', 'Median-Q3', 'Above Q3'])))
+	lowest_log_std_col = min(log_std_devs, key=log_std_devs.get)
+	house_colors = {'Gryffindor': 'crimson', 'Hufflepuff': 'gold', 'Ravenclaw': 'royalblue', 'Slytherin': 'forestgreen'}
+	house_data = data[['Hogwarts House', lowest_log_std_col]].dropna()
+	houses = house_data['Hogwarts House'].unique()
+	house_values = {house: house_data[house_data['Hogwarts House'] == house][lowest_log_std_col].tolist() for house in houses}
 
-	min_value = float('inf')
-	max_value = float('-inf')
+	min_val = house_data[lowest_log_std_col].min()
+	max_val = house_data[lowest_log_std_col].max()
 
-	for i, feature in enumerate([Feature_1, Feature_2, Feature_3, Feature_4]):
-		col_data = data[feature].dropna()
+	fig, ax = plt.subplots(figsize=(12, 6))
 
-		Q1, Q3 = quartile(data, feature)
-		median = mediane(data, feature)
+	def display_plot(view):
+		ax.clear()
+		if view == 1:
+			ax.bar(log_std_devs.keys(), log_std_devs.values())
+			ax.set_ylabel('Logarithm of Standard Deviation')
+			ax.set_title('Logarithm of Standard Deviation of Each Numeric Column (Skipping First Two Columns)')
+			plt.xticks(rotation=45, ha='right')
+			ax.set_ylim(-0.05, max(log_std_devs.values()) * 1.1)
+		else:
+			for house in houses:
+				ax.hist(house_values[house], bins=20, range=(min_val, max_val), alpha=0.5, edgecolor='black', label=house,
+						color=house_colors.get(house, 'gray'), density=True, stacked=True)
 
-		# Calculate counts in each quartile category
-		below_Q1 = (col_data < Q1).sum()
-		between_Q1_median = ((col_data >= Q1) & (col_data < median)).sum()
-		between_median_Q3 = ((col_data >= median) & (col_data < Q3)).sum()
-		above_Q3 = (col_data >= Q3).sum()
+			ax.set_xlabel(lowest_log_std_col, fontsize=12)
+			ax.set_ylabel('Density', fontsize=12)
+			ax.set_title(f'Distribution of {lowest_log_std_col} by Hogwarts House', fontsize=16)
+			ax.legend(title='Hogwarts House', fontsize=10)
+			ax.set_ylim(0, ax.get_ylim()[1])
+		plt.tight_layout()
 
-		counts = [below_Q1, between_Q1_median, between_median_Q3, above_Q3]
-		labels = ['Below Q1', 'Q1-Median', 'Median-Q3', 'Above Q3']
-
-		# Track min and max values
-		current_min = min(counts)
-		current_max = max(counts)
-		if current_min < min_value:
-			min_value = current_min
-		if current_max > max_value:
-			max_value = current_max
-
-		# Plotting the bars for each feature at the offset position
-		ax.bar([p + bar_width * i for p in positions], counts, bar_width, color=colors[i % len(colors)], edgecolor='black', label=feature, alpha=0.7)
-
-	ax.set_title('Quartile Distribution for Selected Features')
-	ax.set_ylabel('Count')
-	ax.set_xlabel('Quartile Category')
-	ax.set_xticks([p + bar_width * (3) / 2 for p in positions])
-	ax.set_xticklabels(labels)
-	ax.legend(loc='upper right')
-	ax.grid(True)
-
-	# Add annotations for min and max values
-	ax.annotate(f'Min: {min_value}', xy=(0.5, 0.95), xycoords='axes fraction', ha='center', fontsize=10, color='black')
-	ax.annotate(f'Max: {max_value}', xy=(0.5, 0.90), xycoords='axes fraction', ha='center', fontsize=10, color='black')
-	ax.set_ylim(min_value - 1, max_value + 1)
-	plt.draw()
+	view = 1
+	display_plot(view)
 
 	def on_key(event):
-		if event.key == 'escape':
-			plt.close(fig)
-	fig.canvas.mpl_connect('key_press_event', on_key)
+		nonlocal view
+		if event.key == ' ':
+			view *= -1
+			display_plot(view)
+			plt.draw()
+		elif event.key == 'escape':
+			plt.close()
 
+	fig.canvas.mpl_connect('key_press_event', on_key)
+	
+	plt.tight_layout()
 	plt.show()
 
 if __name__ == "__main__":
